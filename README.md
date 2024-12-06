@@ -22,7 +22,7 @@ Script ini bertujuan untuk mengambil dan memproses sitemap dari sebuah situs web
 1. **Clone repositori ini**:
    ```bash
    git clone https://github.com/alqoe/google-index-multi-service.git
-   cd repo-name
+   cd google-index-multi-service
    ```
 
 2. **Instal dependensi**:
