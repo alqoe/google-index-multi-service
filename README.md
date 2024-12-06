@@ -52,7 +52,7 @@ Script ini bertujuan untuk mengambil dan memproses sitemap dari sebuah situs web
    - Pilih "Service Accounts".
    - Klik "Create Service Account".
    - 📝 Beri nama akun layanan dan klik "Create".
-   - Pada langkah "Grant this service account access to project", pilih peran "Project" > "Editor".
+   - Pada langkah "Grant this service account access to project", pilih peran "Project" > "Owner".
    - Klik "Continue".
 
 5. **Buat Kunci Akun Layanan**:
@@ -74,7 +74,7 @@ Script ini bertujuan untuk mengambil dan memproses sitemap dari sebuah situs web
    - Pilih "Users and permissions".
    - Klik "Add user".
    - Masukkan email akun layanan yang Anda buat di Google Cloud Console (email ini dapat ditemukan di file `service_account.json` di bagian `client_email`).
-   - Pilih peran "Full" untuk memberikan akses penuh.
+   - Pilih peran "Pemilik/Owner" untuk memberikan akses penuh.
    - Klik "Add".
 
 ### 🔄 Menggunakan Beberapa Akun Layanan
