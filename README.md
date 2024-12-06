@@ -88,7 +88,7 @@ Setelah Anda membuat dan mengonfigurasi akun layanan, struktur proyek Anda mungk
 ```
 project-root/
 │
-├── index.js
+├── script.js
 ├── service_account1.json
 ├── service_account2.json
 ├── service_account3.json
@@ -103,17 +103,17 @@ project-root/
 
 1. **Ubah URL Sitemap dengan URL Anda**:
    ```bash
-   https://situskamu/sitemap.xml di baris 10 pada index.js
+   https://situskamu/sitemap.xml di baris 10 pada script.js
    ```
 
 2. **Jalankan script untuk memperbarui URL**:
    ```bash
-   node index.js
+   node script.js
    ```
 
 3. **Jalankan script untuk menghapus URL**:
    ```bash
-   node index.js --delete
+   node script.js --delete
    ```
 
 ## 🔍 Cara Kerja
