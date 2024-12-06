@@ -103,7 +103,7 @@ project-root/
 
 1. **Ubah URL Sitemap dengan URL Anda**:
    ```bash
-   https://situskamu/sitemap.xml di bris 10 pada index.js
+   https://situskamu/sitemap.xml di baris 10 pada index.js
    ```
 
 2. **Jalankan script untuk memperbarui URL**:
