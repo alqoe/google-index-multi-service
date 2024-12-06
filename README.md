@@ -21,7 +21,7 @@ Script ini bertujuan untuk mengambil dan memproses sitemap dari sebuah situs web
 
 1. **Clone repositori ini**:
    ```bash
-   git clone https://github.com/username/repo-name.git
+   git clone https://github.com/alqoe/google-index-multi-service.git
    cd repo-name
    ```
 
@@ -101,12 +101,17 @@ project-root/
 
 ## Penggunaan
 
-1. **Jalankan script untuk memperbarui URL**:
+1. **Ubah URL Sitemap dengan URL Anda**:
+   ```bash
+   https://situskamu/sitemap.xml di bris 10 pada index.js
+   ```
+
+2. **Jalankan script untuk memperbarui URL**:
    ```bash
    node index.js
    ```
 
-2. **Jalankan script untuk menghapus URL**:
+3. **Jalankan script untuk menghapus URL**:
    ```bash
    node index.js --delete
    ```
