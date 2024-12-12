@@ -86,7 +86,7 @@ Jika Anda ingin menggunakan beberapa akun layanan untuk menghindari batasan kuot
 Setelah Anda membuat dan mengonfigurasi akun layanan, struktur proyek Anda mungkin akan terlihat seperti ini:
 
 ```
-project-root/
+google-index-multi-service/
 │
 ├── script.js
 ├── service_account1.json
