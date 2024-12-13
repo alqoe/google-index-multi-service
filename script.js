@@ -1,13 +1,14 @@
 const fs = require("fs");
-const request = require("request");
-const requestPromise = require("request-promise");
+// const request = require("request"); // Removed deprecated package
+// const requestPromise = require("request-promise"); // Removed deprecated package
+const axios = require("axios"); // Added axios
 const xml2js = require("xml2js");
 const {google} = require("googleapis");
 
 const parser = new xml2js.Parser();
 
 // Ganti dengan URL sitemap index Anda
-const sitemapIndexUrl = "https://situskamu/sitemap.xml";
+const sitemapIndexUrl = "https://situskamu.com/sitemap.xml";
 
 // Function to read existing URLs
 function getExistingUrls() {
@@ -26,7 +27,8 @@ function getExistingUrls() {
 // Fungsi untuk mengambil dan memproses sitemap
 async function fetchAndProcessSitemap(url, existingUrls, spinner) {
   try {
-    const sitemap = await requestPromise(url);
+    const response = await axios.get(url);
+    const sitemap = response.data;
     const result = await parser.parseStringPromise(sitemap);
 
     if (result.sitemapindex) {
@@ -73,6 +75,7 @@ const existingUrls = getExistingUrls();
 })();
 
 async function processUrls() {
+  cleanupQuotaLogs(); // Add this line
   console.log("🚀 Starting URL processing...");
 
   // Buat file log jika belum ada
@@ -137,7 +140,8 @@ async function processUrls() {
 
   // Proses setiap batch dengan API yang berbeda
   for (const [index, batchUrls] of batches.entries()) {
-    await processBatch(batchUrls, serviceAccountFiles[index]);
+    await processBatch(batchUrls, serviceAccountFiles[index], operationType);
+    await delay(1000); // Add 1 second delay between batches
   }
 }
 
@@ -154,134 +158,176 @@ async function checkGoogleQuota(serviceAccountFile) {
 
   try {
     const tokens = await jwtClient.authorize();
-    const options = {
-      url: "https://indexing.googleapis.com/v3/urlNotifications/metadata",
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-      },
-    };
+    if (tokens && tokens.access_token) {
+      const DAILY_QUOTA_LIMIT = 200;
 
-    return new Promise((resolve, reject) => {
-      request(options, (err, resp, body) => {
-        if (err) {
-          console.error(`Error checking quota for ${serviceAccountFile}:`, err);
-          resolve(0);
-        } else {
-          try {
-            const data = JSON.parse(body);
-            // Google returns quota per day in the response
-            const remainingQuota = data.hasOwnProperty("queryQuotaPerDay")
-              ? data.queryQuotaPerDay.remaining
-              : 0;
-            console.log(
-              `📊 Remaining quota for ${serviceAccountFile}: ${remainingQuota}`
-            );
-            resolve(remainingQuota);
-          } catch (parseErr) {
-            console.error(
-              `Error parsing quota response for ${serviceAccountFile}:`,
-              parseErr
-            );
-            resolve(0);
-          }
-        }
-      });
-    });
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split("T")[0];
+
+      // Read the success log file
+      const successLog = fs.existsSync("log_success.txt")
+        ? fs.readFileSync("log_success.txt", "utf-8")
+        : "";
+
+      // Create or read the quota tracking file for this service account
+      const quotaFile = `quota_${serviceAccountFile
+        .replace("./", "")
+        .replace(".json", "")}.txt`;
+      if (!fs.existsSync(quotaFile)) {
+        fs.writeFileSync(quotaFile, "");
+      }
+
+      const quotaLog = fs.readFileSync(quotaFile, "utf-8");
+      const quotaEntries = quotaLog
+        .split("\n")
+        .filter(line => line.startsWith(today));
+      const todayUsage = quotaEntries.length;
+
+      const remainingQuota = Math.max(0, DAILY_QUOTA_LIMIT - todayUsage);
+      console.log(
+        `✅ Service account ${serviceAccountFile} validated. Remaining quota: ${remainingQuota} (Used today: ${todayUsage})`
+      );
+      return remainingQuota;
+    } else {
+      console.log(
+        `❌ Service account ${serviceAccountFile} failed to authenticate`
+      );
+      return 0;
+    }
   } catch (err) {
-    console.error(`Error authorizing for ${serviceAccountFile}:`, err);
+    console.error(`❌ Error authorizing ${serviceAccountFile}:`, err);
     return 0;
   }
 }
 
-// Modify processBatch function to remove local quota checking
-async function processBatch(batch, serviceAccountFile) {
+// Add a helper function to track daily quota
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Modify processBatch function to correctly format batch requests for Google's API
+async function processBatch(batch, serviceAccountFile, operationType) {
   if (batch.length === 0) {
     console.log(`Skipping empty batch for ${serviceAccountFile}`);
     return;
   }
 
-  console.log(`🔄 Processing batch using ${serviceAccountFile}...`);
+  // Process in chunks of up to 100 URLs
+  const CHUNK_SIZE = 100;
+  const chunks = [];
+  for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
+    chunks.push(batch.slice(i, i + CHUNK_SIZE));
+  }
 
-  // Remove old quota checking code and continue with JWT auth and request
-  const key = require(serviceAccountFile);
-  const jwtClient = new google.auth.JWT(
-    key.client_email,
-    null,
-    key.private_key,
-    ["https://www.googleapis.com/auth/indexing"],
-    null
+  console.log(
+    `🔄 Processing ${batch.length} URLs in ${chunks.length} chunks using ${serviceAccountFile}...`
   );
 
-  try {
-    const tokens = await jwtClient.authorize();
-    const items = limitedBatch.map(line => {
-      return {
-        "Content-Type": "application/http",
-        "Content-ID": "",
-        body:
-          "POST /v3/urlNotifications:publish HTTP/1.1\n" +
-          "Content-Type: application/json\n\n" +
-          JSON.stringify({
-            url: line,
-            type: operationType,
-          }),
+  for (const [index, chunk] of chunks.entries()) {
+    console.log(
+      `Processing chunk ${index + 1}/${chunks.length} (${chunk.length} URLs)`
+    );
+
+    try {
+      const key = require(serviceAccountFile);
+      const jwtClient = new google.auth.JWT(
+        key.client_email,
+        null,
+        key.private_key,
+        ["https://www.googleapis.com/auth/indexing"],
+        null
+      );
+
+      const tokens = await jwtClient.authorize();
+
+      // Prepare multipart body as per Google's batch API
+      const boundary = "batch_boundary";
+      const multipartBody =
+        chunk
+          .map((url, idx) => {
+            return [
+              `--${boundary}`,
+              "Content-Type: application/http",
+              `Content-ID: <item-${idx}>`,
+              "",
+              "POST /v3/urlNotifications:publish HTTP/1.1",
+              "Content-Type: application/json",
+              "",
+              JSON.stringify({
+                url: url,
+                type: operationType,
+              }),
+            ].join("\n");
+          })
+          .join("\n") + `\n--${boundary}--`;
+
+      const options = {
+        method: "POST",
+        url: "https://indexing.googleapis.com/batch",
+        headers: {
+          "Content-Type": `multipart/mixed; boundary=${boundary}`,
+          Authorization: `Bearer ${tokens.access_token}`,
+        },
+        data: multipartBody,
       };
-    });
 
-    const options = {
-      url: "https://indexing.googleapis.com/batch",
-      method: "POST",
-      headers: {
-        "Content-Type": "multipart/mixed",
-      },
-      auth: {bearer: tokens.access_token},
-      multipart: items,
-    };
+      const resp = await axios(options);
 
-    return new Promise((resolve, reject) => {
-      request(options, (err, resp, body) => {
-        if (err) {
-          console.log(
-            `❌ Error processing batch using ${serviceAccountFile}:`,
-            err
-          );
-          // Log semua URL yang gagal
-          limitedBatch.forEach(url => {
-            fs.appendFileSync("log_failure.txt", url + "\n");
-          });
-          reject(err);
-        } else {
-          console.log(
-            `✅ Request completed for batch using ${serviceAccountFile} with status code: ${resp.statusCode}`
-          );
-          if (resp.statusCode === 200) {
-            console.log(`✅ Batch processed successfully.`);
-            limitedBatch.forEach(url => {
-              fs.appendFileSync("log_success.txt", url + "\n");
-            });
-          } else if (resp.statusCode === 429) {
-            console.log(`⚠️ Quota limit reached for ${serviceAccountFile}.`);
-            // Log semua URL yang gagal
-            limitedBatch.forEach(url => {
-              fs.appendFileSync("log_failure.txt", url + "\n");
-            });
-          } else {
-            console.log(`❌ Unexpected status code: ${resp.statusCode}`);
-            // Log semua URL yang gagal
-            limitedBatch.forEach(url => {
-              fs.appendFileSync("log_failure.txt", url + "\n");
-            });
-          }
-          resolve();
-        }
+      console.log(
+        `✅ Chunk ${index + 1} completed with status code: ${resp.status}`
+      );
+      if (resp.status === 200) {
+        const timestamp = new Date().toISOString().split("T")[0];
+        const quotaFile = `quota_${serviceAccountFile
+          .replace("./", "")
+          .replace(".json", "")}.txt`;
+
+        chunk.forEach(url => {
+          fs.appendFileSync(quotaFile, `${timestamp} ${url}\n`);
+          fs.appendFileSync("log_success.txt", url + "\n");
+        });
+
+        console.log(`✅ Chunk ${index + 1} processed successfully`);
+      } else if (resp.status === 429) {
+        console.log(`⚠️ Quota limit reached in chunk ${index + 1}`);
+        chunk.forEach(url => {
+          fs.appendFileSync("log_failure.txt", url + "\n");
+        });
+      } else {
+        console.log(`❌ Unexpected status code: ${resp.status}`);
+        chunk.forEach(url => {
+          fs.appendFileSync("log_failure.txt", url + "\n");
+        });
+      }
+
+      // Add delay between chunks
+      if (index < chunks.length - 1) {
+        console.log("Waiting 1 second before next chunk...");
+        await delay(1000);
+      }
+    } catch (err) {
+      console.log(`❌ Error in chunk ${index + 1}:`, err);
+      chunk.forEach(url => {
+        fs.appendFileSync("log_failure.txt", url + "\n");
       });
-    });
-  } catch (err) {
-    console.log(`❌ Error processing batch using ${serviceAccountFile}:`, err);
-    // Log semua URL yang gagal
-    limitedBatch.forEach(url => {
-      fs.appendFileSync("log_failure.txt", url + "\n");
-    });
+    }
   }
+}
+
+// Add cleanup function to reset quota logs daily
+function cleanupQuotaLogs() {
+  const today = new Date().toISOString().split("T")[0];
+  const files = fs.readdirSync(".");
+  const quotaFiles = files.filter(
+    f => f.startsWith("quota_") && f.endsWith(".txt")
+  );
+
+  quotaFiles.forEach(file => {
+    const content = fs.readFileSync(file, "utf-8");
+    const todayEntries = content
+      .split("\n")
+      .filter(line => line.startsWith(today))
+      .join("\n");
+    fs.writeFileSync(file, todayEntries);
+  });
 }
